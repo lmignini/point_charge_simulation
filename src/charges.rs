@@ -31,7 +31,7 @@ impl fmt::Display for Sign {
 }
 
 const K: f32 = 8.99 * 10e9;
-const FORCE_SCALING_FACTOR: f32 = 10e4;
+const FORCE_SCALING_FACTOR: f32 = 50e5;
 
 
 
@@ -212,26 +212,56 @@ impl PointCharge {
     }
 
 
-    pub fn movement(&mut self) {
+    pub fn movement(&mut self, delta: f32) {
         if self.is_colliding {
             return;
         }
         let cartesian_velocity = polar_to_cartesian(self.velocity.x, self.velocity.y);
-        self.center += cartesian_velocity;
-        self.drawing_circle.center += cartesian_velocity;
+        self.center += cartesian_velocity * delta;
+        self.drawing_circle.center += cartesian_velocity * delta;
         // dbg!(self.center, cartesian_velocity);
     }
 
     pub fn check_collision_with(&mut self, point_charge: &PointCharge) {
-        if !self.is_colliding {
-            self.is_colliding =  self.center.distance_squared(point_charge.center) < (2.0*(Self::DEFAULT_RADIUS + 1.0)).powi(2);
-        }
+        // Reset collision state each time
+        self.is_colliding = false;
 
+        // Get distance between charges
+        let distance_squared = self.center.distance_squared(point_charge.center);
+        let min_distance = 2.0 * Self::DEFAULT_RADIUS;
+
+        // Check if colliding
+        if distance_squared < min_distance.powi(2) {
+            self.is_colliding = true;
+
+            // Only apply collision response if not fixed
+            if !self.is_fixed {
+                // Calculate collision response
+                let distance = distance_squared.sqrt();
+                if distance > 0.0 {
+                    let overlap = min_distance - distance;
+                    let direction = (self.center - point_charge.center).normalize();
+
+                    // Move charge away from collision
+                    self.center += direction * overlap * 0.5;
+                    self.drawing_circle.center = self.center;
+
+                    // Also reset velocity to prevent immediate re-collision
+                    self.velocity = Self::NULL_VECTOR;
+                }
+            }
+        }
     }
 
 
     pub fn enclosing_square(&self) -> Rect {
         self.drawing_circle.enclosing_square(Self::ENCLOSING_SQUARE_PADDING)
+    }
+
+
+    pub fn potential_contribution_at(&self, point: &Vec2) -> f32 {
+        let distance = self.center.distance(*point);
+        return K * self.q / distance;
     }
 
     pub fn draw_forces(&self ) {
@@ -249,8 +279,8 @@ impl PointCharge {
 
 
         self.drawing_circle.draw();
-        let tmp = self.drawing_circle.enclosing_square(Self::ENCLOSING_SQUARE_PADDING);
-        draw_rectangle_lines(tmp.x, tmp.y, tmp.w, tmp.h, 3.0, GREEN);
+        // let tmp = self.drawing_circle.enclosing_square(Self::ENCLOSING_SQUARE_PADDING);
+        // draw_rectangle_lines(tmp.x, tmp.y, tmp.w, tmp.h, 3.0, GREEN);
     }
 
 }

@@ -60,6 +60,10 @@ impl Voltmeter {
     pub fn add_equipotential(&mut self) {
         self.equipotentials.push(self.measured_potential);
     }
+    
+    pub fn clear_equipotentials(&mut self) {
+        self.equipotentials.clear();
+    }
 
     pub fn draw(&self) {
         if self.is_active {

@@ -1,4 +1,5 @@
 use std::cmp::max;
+use rayon::prelude::*;
 use std::collections::HashMap;
 use std::default::Default;
 use itertools::Itertools;
@@ -6,7 +7,8 @@ use std::f32::consts::PI;
 use std::f32::INFINITY;
 use std::iter::Map;
 use std::path::Iter;
-use std::vec;
+use std::{slice, vec};
+use std::alloc::System;
 use is_close::{is_close, AVERAGE};
 use macroquad::math::f32;
 use macroquad::miniquad::gl::glPolygonOffset;
@@ -14,17 +16,19 @@ use macroquad::prelude::*;
 use macroquad::prelude::scene::clear;
 use point_charge_simulation::geometry::{ForceArrow, ChargeCircle};
 use point_charge_simulation::{charges, Drawable, SplitOneMut};
-use point_charge_simulation::charges::{calculate_potential, color_based_on_potential, PointCharge, TestCharge};
+use point_charge_simulation::charges::{ color_based_on_potential, PointCharge, TestCharge};
 use point_charge_simulation::voltmeter::Voltmeter;
 use crate::SimulationState::Running;
 
-const MOVEMENT_SPEED: f32 = 200.0;
 const WINDOW_WIDTH: u16 = 1600;
 const WINDOW_HEIGHT: u16 = 1000;
 
 const ELECTRIC_FIELD_DENSITY: usize = 50;
-const POTENTIAL_DENSITY: usize = 10;
-const PADDING_FROM_WINDOW_BORDERS: u16 = 50;
+const POTENTIAL_DENSITY: usize = 5;
+const PADDING_FROM_WINDOW_BORDERS: u16 = 0;
+
+const TRANSPARENT_COLOR: Color = color_u8!(0, 0, 0, 0);
+const TRANSPARENT_COLOR_SLICE: &[Color; WINDOW_WIDTH as usize * WINDOW_HEIGHT as usize] = &[TRANSPARENT_COLOR; WINDOW_WIDTH as usize * WINDOW_HEIGHT as usize];
 
 
 fn window_conf() -> Conf {
@@ -45,8 +49,9 @@ enum SimulationState {
 
 #[macroquad::main(window_conf)]
 async fn main() {
+
+    // dbg!(TRANSPARENT_COLOR_SLICE.len());
     let mut charges: Vec<PointCharge> = vec![];
-    let delta_time = get_frame_time();
     let mut simulation_state: SimulationState = Running;
 
     let field_x_points = (PADDING_FROM_WINDOW_BORDERS..=WINDOW_WIDTH - PADDING_FROM_WINDOW_BORDERS).step_by(ELECTRIC_FIELD_DENSITY);
@@ -59,11 +64,15 @@ async fn main() {
     }
 
 
-    let potential_x_points = (0..=WINDOW_WIDTH).step_by(POTENTIAL_DENSITY);
-    let potential_y_points = (0..=WINDOW_HEIGHT).step_by(POTENTIAL_DENSITY);
+    let potential_x_points = (0..WINDOW_WIDTH).step_by(POTENTIAL_DENSITY);
+    let potential_y_points = (0..WINDOW_HEIGHT).step_by(POTENTIAL_DENSITY);
     let potential_xy_meshgrid = potential_x_points.cartesian_product(potential_y_points);
-    let mut potential_map: HashMap<UVec2, f32> = HashMap::new();
+    let mut potential_map: HashMap<UVec2, f32> = HashMap::with_capacity((WINDOW_WIDTH as usize * WINDOW_HEIGHT as usize));
     let mut max_potential: f32 = 0.0;
+    let mut potential_image = Image::gen_image_color(WINDOW_WIDTH as u16, WINDOW_HEIGHT as u16, BLACK);
+
+    let transparent_equipotential_lines: Image = Image::gen_image_color(WINDOW_WIDTH as u16, WINDOW_HEIGHT as u16, color_u8!(255,255,255, 0));
+    let mut equipotential_lines_image = Image::gen_image_color(WINDOW_WIDTH as u16, WINDOW_HEIGHT as u16, color_u8!(255,255,255, 0));
 
     for (x, y) in potential_xy_meshgrid {
         potential_map.insert(UVec2::new(u32::from(x), u32::from(y)), 0.0);
@@ -78,7 +87,13 @@ async fn main() {
     loop {
 
         clear_background(BLACK);
+
+        let delta_time = get_frame_time();
         let mouse_position = Vec2 { x: mouse_position().0, y: mouse_position().1 };
+        if is_key_pressed(KeyCode::C) {
+            voltmeter.clear_equipotentials();
+            equipotential_lines_image = transparent_equipotential_lines.clone();
+        }
         if is_key_pressed(KeyCode::V) {
             voltmeter.is_active = !voltmeter.is_active;
         }
@@ -102,18 +117,22 @@ async fn main() {
             clear_potential(&mut potential_map);
 
             update_field(&mut test_charges, &charges);
-            update_charges(&mut charges);
+            update_charges(&mut charges, delta_time);
             max_potential = update_potential_and_return_max(&mut potential_map, &charges);
+
         }
 
         voltmeter.update(mouse_position, &charges);
-
-        draw_potential(&potential_map, max_potential, &voltmeter.equipotentials);
+        equipotential_lines_image = transparent_equipotential_lines.clone();
+        update_potential_images(&potential_map, max_potential, &voltmeter.equipotentials, &mut potential_image, &mut equipotential_lines_image);
+        draw_potential(&potential_image);
         draw_field(&test_charges);
+        draw_equipotential_lines(&equipotential_lines_image);
         draw_charges(&charges);
 
         voltmeter.draw();
 
+        draw_fps();
         next_frame().await;
     }
 
@@ -165,7 +184,7 @@ fn update_field(test_charges: &mut Vec<TestCharge>, charges: &Vec<PointCharge>) 
     }
 
 
-fn update_charges(charges: &mut Vec<PointCharge>) {
+fn update_charges(charges: &mut Vec<PointCharge>, delta: f32) {
     for charge in &mut *charges {
         charge.clear_forces();
     }
@@ -183,7 +202,7 @@ fn update_charges(charges: &mut Vec<PointCharge>) {
         charge.calculate_max_force();
         charge.calculate_acceleration();
         charge.calculate_velocity();
-        charge.movement();
+        charge.movement(delta);
     }
 }
 
@@ -230,31 +249,65 @@ fn clear_potential(potential_map: &mut HashMap<UVec2, f32>) {
     }
 }
 
+
+
 fn update_potential_and_return_max(potential_map: &mut HashMap<UVec2, f32>, charges: &Vec<PointCharge>) -> f32 {
-    let mut max_potential: f32 = 0.0;
-    for (key, value) in potential_map {
-        let temp_vec2 = Vec2::new(key.x as f32, key.y as f32);
-        let current_potential = calculate_potential(&temp_vec2, charges);
-        *value = current_potential;
-        max_potential = 200.0;
-
+    // Process calculations in parallel and modify values in place
+    for charge in charges {
+        potential_map.par_iter_mut().for_each(|(key, value)| {
+            let point_pos = Vec2::new(key.x as f32, key.y as f32);
+            *value += charge.potential_contribution_at(&point_pos);
+        });
     }
-    max_potential
-
-}
-fn draw_potential(potential_map: &HashMap<UVec2, f32>, max_potential:f32, equipotentials: &Vec<f32>) {
-   for (point, potential) in potential_map {
-       let color = color_based_on_potential(*potential, max_potential);
-
-       draw_circle(point.x as f32, point.y as f32, 6.0, color);
-       for equipotential in equipotentials {
-           let mut equipotential_points: Vec<UVec2> = vec![];
-               if is_close!(*potential, *equipotential, rel_tol=1e-2, method=AVERAGE) {
-               draw_circle(point.x as f32, point.y as f32, 6.0, GREEN);
-               break;
-           }
-       }
-   }
+    // Return fixed max value as you're doing
+    200.0
 }
 
+fn update_potential_images(potential_map: &HashMap<UVec2, f32>, max_potential: f32, equipotentials: &Vec<f32>, potential_image: &mut Image, equipotential_lines_image: &mut Image) {
+    // Process all points in parallel and collect updates
+    let updates: Vec<(UVec2, Color, bool)> = potential_map.par_iter()
+        .map(|(point, potential)| {
+            // Check for equipotential lines first
+            let is_equipotential:bool;
+            if (potential.abs() < 10.0) {
+                is_equipotential = equipotentials.iter()
+                    .any(|equip| is_close!(*potential+10.0, *equip+10.0, abs_tol=1e-1));
+            } else {
+            is_equipotential = equipotentials.iter()
+                .any(|equip| is_close!(*potential, *equip, rel_tol=1e-2, method=AVERAGE));
+                };
 
+            // Determine color based on potential or equipotential status
+            let color = if is_equipotential {
+                GREEN
+            } else {
+                color_based_on_potential(*potential, max_potential)
+            };
+
+            (*point, color, is_equipotential)
+        })
+        .collect();
+    // equipotential_lines_image.update(TRANSPARENT_COLOR_SLICE);
+    // Apply updates to both images sequentially
+    for (point, color, is_equipotential) in updates {
+        potential_image.set_pixel(point.x, point.y, color);
+
+        if is_equipotential {
+            equipotential_lines_image.set_pixel(point.x, point.y, GREEN);
+        }
+    }
+}
+fn draw_potential(potential_image: &Image) {
+
+
+
+     // Create a texture from the image and draw it
+     let texture = Texture2D::from_image(potential_image);
+     draw_texture(&texture, 0.0, 0.0, WHITE);
+}
+
+fn draw_equipotential_lines(equipotential_lines_image: &Image) {
+    // Create a texture from the image and draw it
+    let texture = Texture2D::from_image(equipotential_lines_image);
+    draw_texture(&texture, 0.0, 0.0, WHITE);
+}

@@ -3,7 +3,7 @@ use macroquad::color_u8;
 
 pub mod geometry;
 pub mod charges;
-pub mod voltmeter;
+pub mod voltmeter; 
 
 pub trait Drawable {
     fn draw(&self);
