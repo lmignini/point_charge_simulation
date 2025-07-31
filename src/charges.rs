@@ -5,6 +5,7 @@ use macroquad::color_u8;
 use macroquad::math::{cartesian_to_polar, polar_to_cartesian, Rect, UVec2, Vec2};
 use macroquad::miniquad::native::apple::frameworks::{sel, Sel};
 use macroquad::prelude::{draw_circle, draw_line, draw_rectangle_lines};
+use crate::charges::Sign::Neutral;
 use crate::Drawable;
 use self::Sign::{Negative, Positive};
 
@@ -68,21 +69,21 @@ pub fn color_based_on_potential(potential: f32, max_potential: f32) -> Color {
 
 #[derive(Debug)]
 pub struct PointCharge {
-    id: usize,
+    pub id: usize,
     pub center: Vec2,
     pub drawing_circle: ChargeCircle,
-    sign: Sign,
-    is_fixed: bool,
+    pub sign: Sign,
+    pub is_fixed: bool,
     is_selected: bool,
-    is_colliding: bool,
+    pub is_colliding: bool,
 
-    m: f32,
+    pub m: f32,
     q: f32,
     forces: Vec<Vec2>,
     net_force: Vec2,
     max_force_magnitude: f32,
     acceleration: Vec2,
-    velocity: Vec2,
+    pub velocity: Vec2,
 
 }
 
@@ -156,6 +157,33 @@ impl PointCharge {
     }
 
 
+    // Add this constructor to PointCharge impl
+    pub fn new_neutral_charge_from_merge(id: usize, center: Vec2, is_fixed: bool) -> Self {
+        let drawing_circle = ChargeCircle::new(
+            center,
+            PointCharge::DEFAULT_RADIUS,
+            LIGHTGRAY, // Gray for neutral
+            Some(Neutral)); // No sign for neutral charge
+
+        PointCharge {
+            id,
+            center,
+            drawing_circle,
+            sign: Sign::Neutral,
+            is_fixed,
+            is_selected: false,
+            is_colliding: false,
+
+            m: 2.0*Self::DEFAULT_MASS,
+            q: 0.0, // Neutral has zero charge
+            forces: vec![],
+            net_force: Self::NULL_VECTOR,
+            max_force_magnitude: 0.0,
+            acceleration: Self::NULL_VECTOR,
+            velocity: Self::NULL_VECTOR
+        }
+    }
+
     pub fn force_with(&mut self, point_charge: &PointCharge) -> Vec2 {
         let distance_squared = self.center.distance_squared(point_charge.center);
         let magnitude =  FORCE_SCALING_FACTOR * K * self.q * point_charge.q / distance_squared;
@@ -222,32 +250,69 @@ impl PointCharge {
         // dbg!(self.center, cartesian_velocity);
     }
 
-    pub fn check_collision_with(&mut self, point_charge: &PointCharge) {
-        // Reset collision state each time
+
+
+    pub fn check_collision_with(&mut self, point_charge: &mut PointCharge, delta_time: f32) {
+        // Reset collision state
         self.is_colliding = false;
 
         // Get distance between charges
         let distance_squared = self.center.distance_squared(point_charge.center);
-        let min_distance = 2.0 * Self::DEFAULT_RADIUS;
+        let min_distance = (self.drawing_circle.radius + point_charge.drawing_circle.radius);
 
         // Check if colliding
         if distance_squared < min_distance.powi(2) {
             self.is_colliding = true;
+            point_charge.is_colliding = true;
 
-            // Only apply collision response if not fixed
-            if !self.is_fixed {
-                // Calculate collision response
+            // Only apply collision response if at least one charge is not fixed
+            if !self.is_fixed || !point_charge.is_fixed {
                 let distance = distance_squared.sqrt();
                 if distance > 0.0 {
                     let overlap = min_distance - distance;
                     let direction = (self.center - point_charge.center).normalize();
 
-                    // Move charge away from collision
-                    self.center += direction * overlap * 0.5;
-                    self.drawing_circle.center = self.center;
+                    // Calculate how much each charge should move (based on fixed status)
+                    let self_factor = if self.is_fixed { 0.0 } else { 1.0 };
+                    let other_factor = if point_charge.is_fixed { 0.0 } else { 1.0 };
 
-                    // Also reset velocity to prevent immediate re-collision
-                    self.velocity = Self::NULL_VECTOR;
+                    // Normalize movement factors
+                    let total_factor = self_factor + other_factor;
+                    let (self_factor, other_factor) = if total_factor > 0.0 {
+                        (self_factor / total_factor, other_factor / total_factor)
+                    } else {
+                        (0.0, 0.0)
+                    };
+
+                    // Apply position correction with strength proportional to overlap
+                    let correction_factor = 1.5; // Stronger correction for low FPS
+                    self.center += direction * overlap * self_factor * correction_factor;
+                    point_charge.center -= direction * overlap * other_factor * correction_factor;
+
+                    // Update drawing positions
+                    self.drawing_circle.center = self.center;
+                    point_charge.drawing_circle.center = point_charge.center;
+
+                    // Apply velocity correction (bounce effect)
+                    // Apply velocity correction (bounce effect)
+                    if !self.is_fixed && !point_charge.is_fixed {
+                        // Calculate relative velocity
+                        let rel_velocity = self.velocity - point_charge.velocity;
+                        let vel_along_normal = rel_velocity.dot(direction);
+
+                        // Only apply bounce if objects are moving toward each other
+                        if vel_along_normal < 0.0 {
+                            let restitution = 0.5; // Bounciness factor
+
+                            // Calculate impulse with mass consideration
+                            let impulse_scalar = -(1.0 + restitution) * vel_along_normal /
+                                (1.0/self.m + 1.0/point_charge.m);
+
+                            // Apply velocity changes proportional to inverse mass
+                            self.velocity += direction * impulse_scalar / self.m;
+                            point_charge.velocity -= direction * impulse_scalar / point_charge.m;
+                        }
+                    }
                 }
             }
         }
@@ -262,6 +327,12 @@ impl PointCharge {
     pub fn potential_contribution_at(&self, point: &Vec2) -> f32 {
         let distance = self.center.distance(*point);
         return K * self.q / distance;
+    }
+
+    // Add this method to check for opposite charges
+    pub fn should_merge_with(&self, other: &PointCharge) -> bool {
+        (self.sign == Positive && other.sign == Negative) ||
+            (self.sign == Negative && other.sign == Positive)
     }
 
     pub fn draw_forces(&self ) {

@@ -17,6 +17,7 @@ use macroquad::prelude::scene::clear;
 use point_charge_simulation::geometry::{ForceArrow, ChargeCircle};
 use point_charge_simulation::{charges, Drawable, SplitOneMut};
 use point_charge_simulation::charges::{ color_based_on_potential, PointCharge, TestCharge};
+use point_charge_simulation::charges::Sign::Neutral;
 use point_charge_simulation::voltmeter::Voltmeter;
 use crate::SimulationState::Running;
 
@@ -24,7 +25,7 @@ const WINDOW_WIDTH: u16 = 1600;
 const WINDOW_HEIGHT: u16 = 1000;
 
 const ELECTRIC_FIELD_DENSITY: usize = 50;
-const POTENTIAL_DENSITY: usize = 5;
+const POTENTIAL_DENSITY: usize = 1;
 const PADDING_FROM_WINDOW_BORDERS: u16 = 0;
 
 const TRANSPARENT_COLOR: Color = color_u8!(0, 0, 0, 0);
@@ -185,19 +186,82 @@ fn update_field(test_charges: &mut Vec<TestCharge>, charges: &Vec<PointCharge>) 
 
 
 fn update_charges(charges: &mut Vec<PointCharge>, delta: f32) {
-    for charge in &mut *charges {
+    // Clear forces
+    for charge in charges.iter_mut() {
         charge.clear_forces();
+        charge.is_colliding = false;
     }
+
+    // Track merges
+    let mut to_remove = vec![false; charges.len()];
+    let mut new_charges = Vec::new();
+
+    // Handle collisions and forces
     for i in 0..charges.len() {
-        let (charge1, other_charges) = charges.split_one_mut(i);
-        // dbg!(&charge1);
-        for charge2 in other_charges {
+        if to_remove[i] { continue; }
+
+        for j in i+1..charges.len() {
+            if to_remove[j] { continue; }
+
+            let (first, second) = charges.split_at_mut(j);
+            let charge1 = &mut first[i];
+            let charge2 = &mut second[0];
+
             charge1.force_with(charge2);
-            charge1.check_collision_with(charge2);
+            charge1.check_collision_with(charge2, delta);
+
+            // Check for merge condition
+            if charge1.is_colliding && charge1.should_merge_with(charge2) {
+                to_remove[i] = true;
+                to_remove[j] = true;
+
+                // Create new neutral charge at midpoint
+                let new_center = (charge1.center + charge2.center) * 0.5;
+
+                // Conserve momentum in velocity
+                let total_mass = charge1.m + charge2.m;
+                let new_velocity = if total_mass > 0.0 {
+                    (charge1.velocity * charge1.m + charge2.velocity * charge2.m) / total_mass
+                } else {
+                    Vec2::ZERO
+                };
+
+                let mut neutral = PointCharge::new_neutral_charge_from_merge(
+                    charge1.id, // Reuse an ID
+                    new_center,
+                    charge1.is_fixed && charge2.is_fixed
+                );
+
+                neutral.velocity = new_velocity;
+                new_charges.push(neutral);
+                break;
+            }
+        }
+        // Reverse interactions (i with j<i) - this ensures all charges get updated
+        for j in 0..i {
+            if to_remove[j] { continue; }
+
+            let (first, second) = charges.split_at_mut(i);
+            let charge2 = &mut first[j];
+            let charge1 = &mut second[0];
+
+            charge1.force_with(charge2);
+            // No collision check needed here as it's already done in the forward pass
         }
     }
 
-    for charge in charges {
+    // Remove merged charges (in reverse order)
+    for i in (0..charges.len()).rev() {
+        if to_remove[i] {
+            charges.swap_remove(i);
+        }
+    }
+
+    // Add new neutral charges
+    charges.extend(new_charges);
+
+    // Update physics
+    for charge in charges.iter_mut() {
         charge.calculate_net_force();
         charge.calculate_max_force();
         charge.calculate_acceleration();
@@ -205,7 +269,6 @@ fn update_charges(charges: &mut Vec<PointCharge>, delta: f32) {
         charge.movement(delta);
     }
 }
-
 fn draw_field(test_charges: &Vec<TestCharge>) {
     for test_charge in test_charges {
         test_charge.draw();
@@ -224,6 +287,7 @@ fn draw_charges(charges: &Vec<PointCharge>) {
 }
 
 fn spawn_charge(charges: &mut Vec<PointCharge>, mouse_position: Vec2) {
+
     let id = charges.len() + 1;
     if is_mouse_button_pressed(MouseButton::Left) {
         if is_key_down(KeyCode::LeftShift) {
@@ -254,6 +318,7 @@ fn clear_potential(potential_map: &mut HashMap<UVec2, f32>) {
 fn update_potential_and_return_max(potential_map: &mut HashMap<UVec2, f32>, charges: &Vec<PointCharge>) -> f32 {
     // Process calculations in parallel and modify values in place
     for charge in charges {
+        if charge.sign == Neutral { continue}
         potential_map.par_iter_mut().for_each(|(key, value)| {
             let point_pos = Vec2::new(key.x as f32, key.y as f32);
             *value += charge.potential_contribution_at(&point_pos);

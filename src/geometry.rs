@@ -49,7 +49,7 @@ fn draw_arrow(application_point: Vec2, ending_point: Vec2, color: Color) {
 #[derive(Debug)]
 pub struct ChargeCircle {
     pub(crate) center: Vec2,
-    radius: f32,
+    pub radius: f32,
     color: Color,
     symbol: Option<Sign>,
 }
