@@ -3,7 +3,6 @@ use crate::geometry::{ForceArrow, ChargeCircle, FieldArrow};
 use macroquad::color::{Color, BLUE, GREEN, LIGHTGRAY, RED, WHITE};
 use macroquad::color_u8;
 use macroquad::math::{cartesian_to_polar, polar_to_cartesian, Rect, UVec2, Vec2};
-use macroquad::miniquad::native::apple::frameworks::{sel, Sel};
 use macroquad::prelude::{draw_circle, draw_line, draw_rectangle_lines};
 use crate::charges::Sign::Neutral;
 use crate::Drawable;

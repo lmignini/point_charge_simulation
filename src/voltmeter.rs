@@ -1,6 +1,5 @@
 use macroquad::color::{GREEN, WHITE};
 use macroquad::math::{Rect, Vec2};
-use macroquad::miniquad::native::apple::frameworks::sel;
 use macroquad::shapes::{draw_circle_lines, draw_line, draw_rectangle_lines};
 use macroquad::text::{draw_text, get_text_center};
 use crate::charges::{calculate_potential, PointCharge};

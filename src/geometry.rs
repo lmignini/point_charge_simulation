@@ -3,7 +3,6 @@ use std::fmt;
 use macroquad::color::{Color, GREEN, LIGHTGRAY, WHITE};
 use macroquad::color_u8;
 use macroquad::math::{polar_to_cartesian, Rect, Vec2};
-use macroquad::miniquad::native::apple::frameworks::{sel, Sel};
 use macroquad::prelude::{draw_circle, draw_line};
 use macroquad::shapes::draw_triangle;
 use macroquad::text::{draw_text, get_text_center};
