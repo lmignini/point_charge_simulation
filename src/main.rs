@@ -319,6 +319,7 @@ fn update_potential_and_return_max(potential_map: &mut HashMap<UVec2, f32>, char
     // Process calculations in parallel and modify values in place
     for charge in charges {
         if charge.sign == Neutral { continue}
+
         potential_map.par_iter_mut().for_each(|(key, value)| {
             let point_pos = Vec2::new(key.x as f32, key.y as f32);
             *value += charge.potential_contribution_at(&point_pos);
