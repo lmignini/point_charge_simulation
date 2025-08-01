@@ -21,8 +21,8 @@ use point_charge_simulation::charges::Sign::Neutral;
 use point_charge_simulation::voltmeter::Voltmeter;
 use crate::SimulationState::Running;
 
-const WINDOW_WIDTH: u16 = 1600;
-const WINDOW_HEIGHT: u16 = 1000;
+const WINDOW_WIDTH: u16 = 800;
+const WINDOW_HEIGHT: u16 = 500;
 
 const ELECTRIC_FIELD_DENSITY: usize = 50;
 const POTENTIAL_DENSITY: usize = 1;

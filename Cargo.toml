@@ -2,6 +2,11 @@
 name = "point_charge_simulation"
 version = "0.1.0"
 edition = "2024"
+authors = ["Leonardo Mignini <l.mignini@icloud.com>"]
+description = "Simple interaction simulator between point charges"
+homepage = "https://lmignini.github.io/point_charge_simulation/"
+repository = "https://github.com/lmignini/point_charge_simulation"
+license = "MIT"
 
 [dependencies]
 macroquad = "0.4"
@@ -9,3 +14,4 @@ itertools = "0.14.0"
 is_close = "0.1.3"
 rusty-fitpack = "0.1.2"
 rayon = "1.10.0"
+

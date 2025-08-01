@@ -89,8 +89,8 @@ pub struct PointCharge {
 
 
 impl PointCharge {
-    const DEFAULT_RADIUS: f32 = 48.0;
-    const DEFAULT_CHARGE: f32 = 10e-8;
+    const DEFAULT_RADIUS: f32 = 16.0;
+    const DEFAULT_CHARGE: f32 = 2e-8;
     const DEFAULT_MASS: f32 = 1.67 * 10e-3;
     const NULL_VECTOR: Vec2 = Vec2::ZERO;
     const ENCLOSING_SQUARE_PADDING: f32 = Self::DEFAULT_RADIUS * 2.5;
