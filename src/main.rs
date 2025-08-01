@@ -1,30 +1,22 @@
-use std::cmp::max;
+use crate::SimulationState::Running;
+use is_close::{is_close, AVERAGE};
+use itertools::Itertools;
+use macroquad::math::f32;
+use macroquad::prelude::*;
+use point_charge_simulation::charges::Sign::Neutral;
+use point_charge_simulation::charges::{color_based_on_potential, PointCharge, TestCharge};
+use point_charge_simulation::voltmeter::Voltmeter;
+use point_charge_simulation::Drawable;
 use rayon::prelude::*;
 use std::collections::HashMap;
 use std::default::Default;
-use itertools::Itertools;
-use std::f32::consts::PI;
-use std::f32::INFINITY;
-use std::iter::Map;
-use std::path::Iter;
-use std::{slice, vec};
-use std::alloc::System;
-use is_close::{is_close, AVERAGE};
-use macroquad::math::f32;
-use macroquad::miniquad::gl::glPolygonOffset;
-use macroquad::prelude::*;
-use macroquad::prelude::scene::clear;
-use point_charge_simulation::geometry::{ForceArrow, ChargeCircle};
-use point_charge_simulation::{charges, Drawable, SplitOneMut};
-use point_charge_simulation::charges::{ color_based_on_potential, PointCharge, TestCharge};
-use point_charge_simulation::charges::Sign::Neutral;
-use point_charge_simulation::voltmeter::Voltmeter;
-use crate::SimulationState::Running;
+use std::vec;
+use point_charge_simulation::geometry::draw_arrow;
 
 const WINDOW_WIDTH: u16 = 800;
 const WINDOW_HEIGHT: u16 = 500;
 
-const ELECTRIC_FIELD_DENSITY: usize = 50;
+const ELECTRIC_FIELD_DENSITY: usize = 25;
 const POTENTIAL_DENSITY: usize = 1;
 const PADDING_FROM_WINDOW_BORDERS: u16 = 0;
 
@@ -132,7 +124,6 @@ async fn main() {
         draw_charges(&charges);
 
         voltmeter.draw();
-
         draw_fps();
         next_frame().await;
     }
@@ -160,13 +151,13 @@ fn update_field(test_charges: &mut Vec<TestCharge>, charges: &Vec<PointCharge>) 
     for test_charge in &mut *test_charges {
 
         for charge in charges {
-           if test_charge.center.distance_squared(charge.center) < (2.0*(24.0f32)).powi(2) {
+           if test_charge.center.distance_squared(charge.center) < (1.5*(PointCharge::DEFAULT_RADIUS)).powi(2) {
                test_charge.is_hidden = true;
                break;
            }
             test_charge.is_hidden = false;
         }
-        if (test_charge.is_hidden == false) {
+        if (!test_charge.is_hidden) {
             test_charge.calculate_net_force();
         }
     }
@@ -279,7 +270,9 @@ fn draw_charges(charges: &Vec<PointCharge>) {
         charge.draw_forces();
     }*/
     for charge in charges {
+        if charge.sign != Neutral {
         charge.draw_net_force();
+            }
     }
     for charge in charges {
         charge.draw();
@@ -326,22 +319,15 @@ fn update_potential_and_return_max(potential_map: &mut HashMap<UVec2, f32>, char
         });
     }
     // Return fixed max value as you're doing
-    200.0
+    100.0
 }
 
-fn update_potential_images(potential_map: &HashMap<UVec2, f32>, max_potential: f32, equipotentials: &Vec<f32>, potential_image: &mut Image, equipotential_lines_image: &mut Image) {
+fn update_potential_images(potential_map: &HashMap<UVec2, f32>, max_potential: f32, equipotentials: &[f32], potential_image: &mut Image, equipotential_lines_image: &mut Image) {
     // Process all points in parallel and collect updates
     let updates: Vec<(UVec2, Color, bool)> = potential_map.par_iter()
         .map(|(point, potential)| {
             // Check for equipotential lines first
-            let is_equipotential:bool;
-            if (potential.abs() < 10.0) {
-                is_equipotential = equipotentials.iter()
-                    .any(|equip| is_close!(*potential+10.0, *equip+10.0, abs_tol=1e-1));
-            } else {
-            is_equipotential = equipotentials.iter()
-                .any(|equip| is_close!(*potential, *equip, rel_tol=1e-2, method=AVERAGE));
-                };
+            let is_equipotential = if (potential.abs() < 10.0) { equipotentials.iter().any(|equip| is_close!(*potential+10.0, *equip+10.0, abs_tol=1e-1)) } else { equipotentials.iter().any(|equip| is_close!(*potential, *equip, rel_tol=1e-2, method=AVERAGE)) };
 
             // Determine color based on potential or equipotential status
             let color = if is_equipotential {

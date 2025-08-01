@@ -2,7 +2,7 @@ name: Build and Deploy
 on:
   push:
     branches:
-      - master # If your default branch is named something else, change this
+      - master
 
 permissions:
   contents: write

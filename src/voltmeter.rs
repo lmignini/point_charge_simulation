@@ -1,7 +1,7 @@
-use macroquad::color::{GREEN, WHITE};
+use macroquad::color::{GREEN, RED, WHITE};
 use macroquad::math::{Rect, Vec2};
-use macroquad::shapes::{draw_circle_lines, draw_line, draw_rectangle_lines};
-use macroquad::text::{draw_text, get_text_center};
+use macroquad::shapes::{draw_circle, draw_circle_lines, draw_line, draw_rectangle_lines};
+use macroquad::text::{draw_text, draw_text_ex, get_text_center, TextParams};
 use crate::charges::{calculate_potential, PointCharge};
 
 pub struct Voltmeter {
@@ -19,19 +19,22 @@ impl Default for Voltmeter {
     }
 }
 
+
+
 impl Voltmeter {
     const RETICLE_RADIUS: f32 = 24.0;
     const RECTANGLE_VERTICAL_OFFSET: f32 = Self::RETICLE_RADIUS + 10.0;
     const RECTANGLE_HORIZONTAL_OFFSET: f32 = 2.0*Self::RETICLE_RADIUS;
-    const HORIZONTAL_TEXT_OFFSET: f32 = 2.5;
-    const VERTICAL_TEXT_OFFSET: f32 = 10.0;
+    const HORIZONTAL_TEXT_OFFSET: f32 = Self::RETICLE_RADIUS / 4.0;
+    const VERTICAL_TEXT_OFFSET: f32 = 25.0;
+    const MEASURE_FONT_SIZE: u16 = 24;
     #[must_use]
     pub fn new() -> Self {
         let reticle_center = Vec2::ZERO;
         let rectangle: Rect = Rect {
             x: reticle_center.x - Self::RECTANGLE_HORIZONTAL_OFFSET,
             y: reticle_center.y + Self::RECTANGLE_VERTICAL_OFFSET,
-            w: Self::RETICLE_RADIUS * 4.0,
+            w: Self::RETICLE_RADIUS * 6.0,
             h: Self::RETICLE_RADIUS * 2.0,
         };
         Voltmeter {
@@ -55,11 +58,11 @@ impl Voltmeter {
         self.movement(new_position);
         self.measured_potential = calculate_potential(&self.reticle_center, charges);
     }
-    
+
     pub fn add_equipotential(&mut self) {
         self.equipotentials.push(self.measured_potential);
     }
-    
+
     pub fn clear_equipotentials(&mut self) {
         self.equipotentials.clear();
     }
@@ -71,9 +74,18 @@ impl Voltmeter {
             draw_line(self.reticle_center.x - Self::RETICLE_RADIUS, self.reticle_center.y, self.reticle_center.x + Self::RETICLE_RADIUS, self.reticle_center.y, 1.0, WHITE);
             draw_line(self.reticle_center.x, self.reticle_center.y - Self::RETICLE_RADIUS, self.reticle_center.x, self.reticle_center.y + Self::RETICLE_RADIUS, 1.0, WHITE);
             draw_rectangle_lines(self.rectangle.x, self.rectangle.y, self.rectangle.w, self.rectangle.h, 4.0, WHITE);
-            // let center = get_text_center("Equipotential", Option::None, 16, 1.0, 0.0);
-            let measured_string: &str = &format!("{:.2} V", self.measured_potential);
-            draw_text(measured_string, self.rectangle.x + Self::HORIZONTAL_TEXT_OFFSET, self.rectangle.y + Self::VERTICAL_TEXT_OFFSET, 16.0, GREEN);
+            let measured_string = format!("{:.1} V", self.measured_potential);
+            let text_dimensions = get_text_center(&measured_string, None, Self::MEASURE_FONT_SIZE, 1.0, 0.0);
+
+            // Calculate centered position
+            let text_x = self.rectangle.x + (self.rectangle.w /2.0) -  text_dimensions.x;
+            let text_y = self.rectangle.y + (self.rectangle.h /2.0) - text_dimensions.y;
+
+            draw_text_ex(&measured_string, text_x, text_y, TextParams {
+                 font_size: Self::MEASURE_FONT_SIZE,
+                color: GREEN,
+                ..Default::default()
+                          },);
         }
     }
 }

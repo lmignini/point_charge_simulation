@@ -89,7 +89,7 @@ pub struct PointCharge {
 
 
 impl PointCharge {
-    const DEFAULT_RADIUS: f32 = 16.0;
+    pub const DEFAULT_RADIUS: f32 = 16.0;
     const DEFAULT_CHARGE: f32 = 2e-8;
     const DEFAULT_MASS: f32 = 1.67 * 10e-3;
     const NULL_VECTOR: Vec2 = Vec2::ZERO;
@@ -101,7 +101,8 @@ impl PointCharge {
             center,
             PointCharge::DEFAULT_RADIUS,
             RED,
-            Some(Positive));
+            Some(Positive),
+            is_fixed);
 
         PointCharge {
             id: id,
@@ -130,7 +131,8 @@ impl PointCharge {
             center,
             PointCharge::DEFAULT_RADIUS,
             BLUE,
-        Some(Negative));
+        Some(Negative),
+            is_fixed);
 
         PointCharge {
             id: id,
@@ -162,7 +164,8 @@ impl PointCharge {
             center,
             PointCharge::DEFAULT_RADIUS,
             LIGHTGRAY, // Gray for neutral
-            Some(Neutral)); // No sign for neutral charge
+            Some(Neutral),
+        is_fixed); // No sign for neutral charge
 
         PointCharge {
             id,
@@ -377,7 +380,7 @@ impl TestCharge {
     const NULL_VECTOR: Vec2 = Vec2::ZERO;
     pub fn new(center: Vec2) -> Self {
         TestCharge {
-            center: center,
+            center,
             drawing_arrow: FieldArrow::new(center, 0.0, 0.0, 0.0, 0.0),
             is_hidden: false,
             q: 1.0,
@@ -391,7 +394,7 @@ impl TestCharge {
 
     pub fn force_with(&mut self, point_charge: &PointCharge) -> Vec2 {
         let distance_squared = self.center.distance_squared(point_charge.center);
-        let magnitude =  FORCE_SCALING_FACTOR * K * self.q * point_charge.q / distance_squared;
+        let magnitude =  FORCE_SCALING_FACTOR * K * point_charge.q / distance_squared;
         let delta = Vec2::new(self.center.x - point_charge.center.x, self.center.y - point_charge.center.y);
         let direction = delta.y.atan2(delta.x);
 
