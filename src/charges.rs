@@ -1,12 +1,11 @@
-use std::fmt;
-use crate::geometry::{ForceArrow, ChargeCircle, FieldArrow};
-use macroquad::color::{Color, BLUE, GREEN, LIGHTGRAY, RED, WHITE};
-use macroquad::color_u8;
-use macroquad::math::{cartesian_to_polar, polar_to_cartesian, Rect, UVec2, Vec2};
-use macroquad::prelude::{draw_circle, draw_line, draw_rectangle_lines};
-use crate::charges::Sign::Neutral;
-use crate::Drawable;
 use self::Sign::{Negative, Positive};
+use crate::charges::Sign::Neutral;
+use crate::geometry::{ChargeCircle, FieldArrow, ForceArrow};
+use crate::Drawable;
+use macroquad::color::{Color, BLUE, GREEN, LIGHTGRAY, RED};
+use macroquad::color_u8;
+use macroquad::math::{cartesian_to_polar, polar_to_cartesian, Rect, Vec2};
+use std::fmt;
 
 
 #[derive(PartialEq, Debug)]
@@ -35,7 +34,7 @@ const FORCE_SCALING_FACTOR: f32 = 50e5;
 
 
 
-pub fn calculate_potential(point: &Vec2, charges: &Vec<PointCharge>) -> f32 {
+#[must_use] pub fn calculate_potential(point: &Vec2, charges: &Vec<PointCharge>) -> f32 {
     let mut potential: f32 = 0.0;
     for charge in charges {
         let distance = point.distance(charge.center);
@@ -43,7 +42,7 @@ pub fn calculate_potential(point: &Vec2, charges: &Vec<PointCharge>) -> f32 {
 
     }
 
-    return potential;
+    potential
 
 }
 pub fn color_based_on_potential(potential: f32, max_potential: f32) -> Color {
@@ -51,7 +50,7 @@ pub fn color_based_on_potential(potential: f32, max_potential: f32) -> Color {
     if potential.abs() > max_potential {
         color_intensity = 255;
     } else if max_potential > 0.1 {
-        color_intensity = (f32::round(2.0* ((potential.abs() * 255.0) / max_potential)) as u16).min(255) as u8;;
+        color_intensity = (f32::round(2.0* ((potential.abs() * 255.0) / max_potential)) as u16).min(255) as u8;
     }
     // dbg!(color_intensity);
     let color: Color;
@@ -105,11 +104,11 @@ impl PointCharge {
             is_fixed);
 
         PointCharge {
-            id: id,
-            center: center,
-            drawing_circle: drawing_circle,
+            id,
+            center,
+            drawing_circle,
             sign: Positive,
-            is_fixed: is_fixed,
+            is_fixed,
             is_selected: false,
             is_colliding: false,
 
@@ -254,7 +253,7 @@ impl PointCharge {
 
 
 
-    pub fn check_collision_with(&mut self, point_charge: &mut PointCharge, delta_time: f32) {
+    pub fn check_collision_with(&mut self, point_charge: &mut PointCharge) {
         // Reset collision state
         self.is_colliding = false;
 
@@ -333,6 +332,12 @@ impl PointCharge {
 
     // Add this method to check for opposite charges
     pub fn should_merge_with(&self, other: &PointCharge) -> bool {
+
+        // I don't know if I should keep the commented code or not
+        /*if (self.is_fixed || other.is_fixed) {
+            return false;
+        }*/
+
         (self.sign == Positive && other.sign == Negative) ||
             (self.sign == Negative && other.sign == Positive)
     }

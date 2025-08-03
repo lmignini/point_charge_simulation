@@ -1,21 +1,16 @@
-use crate::SimulationState::Running;
+use crate::SimulationState::{Paused, Running};
 use is_close::{is_close, AVERAGE};
 use itertools::Itertools;
 use macroquad::math::f32;
 use macroquad::prelude::*;
+use ndarray::parallel::prelude::*;
+use ndarray::prelude::*;
+use ndarray::{Array, OwnedRepr};
 use point_charge_simulation::charges::Sign::Neutral;
 use point_charge_simulation::charges::{color_based_on_potential, PointCharge, TestCharge};
 use point_charge_simulation::voltmeter::Voltmeter;
-use point_charge_simulation::Drawable;
-use rayon::prelude::*;
-use std::collections::HashMap;
 use std::default::Default;
-use std::ops::IndexMut;
-use ndarray::parallel::prelude::*;
 use std::vec;
-use ndarray::prelude::*;
-use ndarray::{Array, OwnedRepr};
-use point_charge_simulation::geometry::draw_arrow;
 
 const WINDOW_WIDTH: u16 = 800;
 const WINDOW_HEIGHT: u16 = 500;
@@ -24,9 +19,17 @@ const ELECTRIC_FIELD_DENSITY: usize = 25;
 const POTENTIAL_DENSITY: usize = 1;
 const PADDING_FROM_WINDOW_BORDERS: u16 = 0;
 
-const TRANSPARENT_COLOR: Color = color_u8!(0, 0, 0, 0);
-const TRANSPARENT_COLOR_SLICE: &[Color; WINDOW_WIDTH as usize * WINDOW_HEIGHT as usize] = &[TRANSPARENT_COLOR; WINDOW_WIDTH as usize * WINDOW_HEIGHT as usize];
 
+const RUNNING_SIMULATION_TRIANGLE_VERTICES: (Vec2, Vec2, Vec2) = (
+    Vec2::new(WINDOW_WIDTH as f32 - 10.0, 20.0),  // Left vertex
+    Vec2::new(WINDOW_WIDTH as f32 - 30.0, 10.0),  // Top right
+    Vec2::new(WINDOW_WIDTH as f32 - 30.0,  30.0),  // Bottom right
+);
+
+ const PAUSED_SIMULATION_RECTANGLES: (Rect, Rect) = (
+     Rect::new(WINDOW_WIDTH as f32 - 30.0, 10.0, 7.0, 20.0),  // Left rectangle
+     Rect::new(WINDOW_WIDTH as f32 - 17.0, 10.0, 7.0, 20.0)   // Right rectangle
+     );
 
 fn window_conf() -> Conf {
     Conf {
@@ -38,12 +41,14 @@ fn window_conf() -> Conf {
     }
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Eq)]
 enum SimulationState {
     Running,
     Paused
 }
 
+
+#[allow(clippy::similar_names)]
 #[macroquad::main(window_conf)]
 async fn main() {
 
@@ -65,10 +70,10 @@ async fn main() {
     let potential_y_points = (0..WINDOW_HEIGHT).step_by(POTENTIAL_DENSITY);
     let potential_xy_meshgrid = potential_x_points.cartesian_product(potential_y_points);
     let mut max_potential: f32 = 0.0;
-    let mut potential_image = Image::gen_image_color(WINDOW_WIDTH as u16, WINDOW_HEIGHT as u16, BLACK);
+    let mut potential_image = Image::gen_image_color(WINDOW_WIDTH, WINDOW_HEIGHT, BLACK);
 
-    let transparent_equipotential_lines: Image = Image::gen_image_color(WINDOW_WIDTH as u16, WINDOW_HEIGHT as u16, color_u8!(255,255,255, 0));
-    let mut equipotential_lines_image = Image::gen_image_color(WINDOW_WIDTH as u16, WINDOW_HEIGHT as u16, color_u8!(255,255,255, 0));
+    let transparent_equipotential_lines: Image = Image::gen_image_color(WINDOW_WIDTH, WINDOW_HEIGHT, color_u8!(255,255,255, 0));
+    let mut equipotential_lines_image = Image::gen_image_color(WINDOW_WIDTH , WINDOW_HEIGHT , color_u8!(255,255,255, 0));
     let mut potentials_array = Array::<(Vec2, f32), Ix2>::from_elem((WINDOW_WIDTH as usize,WINDOW_HEIGHT as usize), (Vec2::ZERO, 0.0f32));
     for (x, y) in potential_xy_meshgrid {
         potentials_array[[x as usize,y as usize]] = (Vec2::new(f32::from(x), f32::from(y)), 0.0);
@@ -91,31 +96,39 @@ async fn main() {
         if is_key_pressed(KeyCode::V) {
             voltmeter.is_active = !voltmeter.is_active;
         }
-        if simulation_state == Running {
-            if is_mouse_button_pressed(MouseButton::Left) || is_mouse_button_pressed(MouseButton::Right) {
-                if voltmeter.is_active && is_mouse_button_pressed(MouseButton::Left) {
-                    voltmeter.add_equipotential();
-                }
-                let mut mouse_pointer_is_over_charge = false;
+        if is_key_pressed(KeyCode::Escape) {
+            if simulation_state == Running {
+                simulation_state = Paused;
+            } else {
+                simulation_state = Running;
+            }
 
-                for charge in &charges {
-                    if charge.enclosing_square().contains(mouse_position) {
-                        mouse_pointer_is_over_charge = true;
-                    }
-                }
-                if !mouse_pointer_is_over_charge && !voltmeter.is_active {
+        }
+        if is_mouse_button_pressed(MouseButton::Left) || is_mouse_button_pressed(MouseButton::Right) {
+            if voltmeter.is_active && is_mouse_button_pressed(MouseButton::Left) {
+                voltmeter.add_equipotential();
+            }
+            let mut mouse_pointer_is_over_charge = false;
 
-                    spawn_charge(&mut charges, mouse_position);
+            for charge in &charges {
+                if charge.enclosing_square().contains(mouse_position) {
+                    mouse_pointer_is_over_charge = true;
                 }
             }
-            clear_potential(&mut potentials_array);
+            if !mouse_pointer_is_over_charge && !voltmeter.is_active {
 
-            update_field(&mut test_charges, &charges);
+                spawn_charge(&mut charges, mouse_position);
+            }
+        }
+        if simulation_state == Running {
+
             update_charges(&mut charges, delta_time);
-            max_potential = update_potential_and_return_max(&mut potentials_array, &charges);
 
         }
 
+        clear_potential(&mut potentials_array);
+        update_field(&mut test_charges, &charges);
+        max_potential = update_potential_and_return_max(&mut potentials_array, &charges);
         voltmeter.update(mouse_position, &charges);
         equipotential_lines_image = transparent_equipotential_lines.clone();
         update_potential_images(&potentials_array, max_potential, &voltmeter.equipotentials, &mut potential_image, &mut equipotential_lines_image);
@@ -126,16 +139,11 @@ async fn main() {
 
         voltmeter.draw();
         draw_fps();
+        draw_simulation_state(&simulation_state);
         next_frame().await;
     }
 
 
-    let print_charge_vector = |charges: &Vec<PointCharge>| {
-        println!("\nCharges list: ");
-        for charge in charges {
-            println!("{charge}");
-        }
-    };
 }
 
 fn update_field(test_charges: &mut Vec<TestCharge>, charges: &Vec<PointCharge>) {
@@ -200,7 +208,7 @@ fn update_charges(charges: &mut Vec<PointCharge>, delta: f32) {
             let charge2 = &mut second[0];
 
             charge1.force_with(charge2);
-            charge1.check_collision_with(charge2, delta);
+            charge1.check_collision_with(charge2);
 
             // Check for merge condition
             if charge1.is_colliding && charge1.should_merge_with(charge2) {
@@ -341,6 +349,7 @@ fn update_potential_images(potentials_array: &ArrayBase<OwnedRepr<(Vec2, f32)>, 
     // equipotential_lines_image.update(TRANSPARENT_COLOR_SLICE);
     // Apply updates to both images sequentially
     for (point, color, is_equipotential) in updates {
+        #[allow(clippy::cast_possible_truncation)]
         potential_image.set_pixel(point.x as u32, point.y as u32, color);
 
         if is_equipotential {
@@ -361,4 +370,14 @@ fn draw_equipotential_lines(equipotential_lines_image: &Image) {
     // Create a texture from the image and draw it
     let texture = Texture2D::from_image(equipotential_lines_image);
     draw_texture(&texture, 0.0, 0.0, WHITE);
+}
+
+fn draw_simulation_state(simulation_state: &SimulationState) {
+    if simulation_state == &Running {
+        draw_triangle(RUNNING_SIMULATION_TRIANGLE_VERTICES.0 ,RUNNING_SIMULATION_TRIANGLE_VERTICES.1, RUNNING_SIMULATION_TRIANGLE_VERTICES.2, WHITE);
+
+    } else {
+        draw_rectangle(PAUSED_SIMULATION_RECTANGLES.0.x, PAUSED_SIMULATION_RECTANGLES.0.y, PAUSED_SIMULATION_RECTANGLES.0.w, PAUSED_SIMULATION_RECTANGLES.0.h, WHITE);
+        draw_rectangle(PAUSED_SIMULATION_RECTANGLES.1.x, PAUSED_SIMULATION_RECTANGLES.1.y, PAUSED_SIMULATION_RECTANGLES.1.w, PAUSED_SIMULATION_RECTANGLES.1.h, WHITE);
+    }
 }

@@ -13,7 +13,7 @@ use crate::Drawable;
 
 pub fn draw_arrow(application_point: Vec2, ending_point: Vec2,  body_size: f32, arrowhead_size: f32,  color: Color) {
     if application_point == ending_point {
-        draw_circle(application_point.x, application_point.y, 3.0, LIGHTGRAY);
+        draw_circle(application_point.x, application_point.y, 3.0, color);
         return
     }
 
