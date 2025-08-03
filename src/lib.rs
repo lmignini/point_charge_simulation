@@ -1,6 +1,3 @@
-use macroquad::color::Color;
-use macroquad::color_u8;
-
 pub mod geometry;
 pub mod charges;
 pub mod voltmeter; 
@@ -12,15 +9,15 @@ pub trait Drawable {
 
 type ImplIteratorMut<'a, Item> =
 std::iter::Chain<
-    ::std::slice::IterMut<'a, Item>,
-    ::std::slice::IterMut<'a, Item>,
+    std::slice::IterMut<'a, Item>,
+    std::slice::IterMut<'a, Item>,
 >
 ;
 pub trait SplitOneMut {
     type Item;
 
     fn split_one_mut (
-        self: &'_ mut Self,
+        &'_ mut self,
         i: usize,
     ) -> (&'_ mut Self::Item, ImplIteratorMut<'_, Self::Item>);
 }
@@ -29,7 +26,7 @@ impl<T> SplitOneMut for [T] {
     type Item = T;
 
     fn split_one_mut (
-        self: &'_ mut Self,
+        &'_ mut self,
         i: usize,
     ) -> (&'_ mut Self::Item, ImplIteratorMut<'_, Self::Item>)
     {
