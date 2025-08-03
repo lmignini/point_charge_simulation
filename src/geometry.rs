@@ -54,7 +54,7 @@ pub fn draw_arrow(application_point: Vec2, ending_point: Vec2,  body_size: f32, 
 
 #[derive(Debug)]
 pub struct ChargeCircle {
-    pub(crate) center: Vec2,
+    pub center: Vec2,
     pub radius: f32,
     color: Color,
     symbol: Option<Sign>,
@@ -72,6 +72,11 @@ impl ChargeCircle {
             w: self.radius * 2.0 + padding,
             h: self.radius * 2.0+ padding,
         }
+    }
+
+    #[must_use] pub fn contains(&self, point: Vec2) -> bool {
+        self.center.distance_squared(point) < self.radius.powi(2)
+
     }
 }
 impl Drawable for ChargeCircle {

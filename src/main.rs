@@ -11,6 +11,7 @@ use point_charge_simulation::charges::{color_based_on_potential, PointCharge, Te
 use point_charge_simulation::voltmeter::Voltmeter;
 use std::default::Default;
 use std::vec;
+use macroquad::miniquad::CursorIcon;
 
 const WINDOW_WIDTH: u16 = 800;
 const WINDOW_HEIGHT: u16 = 500;
@@ -81,14 +82,14 @@ async fn main() {
     let mut voltmeter: Voltmeter = Voltmeter::new();
 
 
+    let mut cursor_is_over_a_charge: bool = false;
+    let mut dragging_charge: Option<usize> = None;
 
 
     loop {
-
         clear_background(BLACK);
-
         let delta_time = get_frame_time();
-        let mouse_position = Vec2 { x: mouse_position().0, y: mouse_position().1 };
+
         if is_key_pressed(KeyCode::C) {
             voltmeter.clear_equipotentials();
             equipotential_lines_image = transparent_equipotential_lines.clone();
@@ -97,13 +98,50 @@ async fn main() {
             voltmeter.is_active = !voltmeter.is_active;
         }
         if is_key_pressed(KeyCode::Escape) {
-            if simulation_state == Running {
-                simulation_state = Paused;
-            } else {
-                simulation_state = Running;
-            }
+            toggle_simulation_state(&mut simulation_state);
 
         }
+
+        let mouse_position = Vec2 { x: mouse_position().0, y: mouse_position().1 };
+
+        if is_mouse_button_pressed(MouseButton::Left) {
+            for (i, charge) in charges.iter().enumerate() {
+                if charge.drawing_circle.contains(mouse_position){
+                    cursor_is_over_a_charge = true;
+                    dragging_charge = Some(i);
+                    break;
+                }
+            }
+        }
+
+        if is_mouse_button_released(MouseButton::Left) {
+            dragging_charge = None;
+        }
+
+        cursor_is_over_a_charge = false;
+        for (i, charge) in charges.iter_mut().enumerate() {
+            // Handle visual hover state
+            if charge.drawing_circle.contains(mouse_position) {
+                cursor_is_over_a_charge = true;
+                charge.is_selected = true;
+            } else {
+                // Keep selection only if this is the charge being dragged
+                charge.is_selected = dragging_charge == Some(i);
+            }
+
+            // Update position for dragged charge
+            if is_mouse_button_down(MouseButton::Left) && dragging_charge == Some(i) {
+                charge.center = mouse_position;
+                charge.drawing_circle.center = mouse_position;
+            }
+        }
+        if (cursor_is_over_a_charge) {
+            miniquad::window::set_mouse_cursor(CursorIcon::Pointer);
+        } else {
+            miniquad::window::set_mouse_cursor(CursorIcon::Default);
+        }
+
+
         if is_mouse_button_pressed(MouseButton::Left) || is_mouse_button_pressed(MouseButton::Right) {
             if voltmeter.is_active && is_mouse_button_pressed(MouseButton::Left) {
                 voltmeter.add_equipotential();
@@ -146,6 +184,14 @@ async fn main() {
 
 }
 
+fn toggle_simulation_state(simulation_state: &mut SimulationState) {
+    if *simulation_state == Running {
+        *simulation_state = Paused;
+    } else {
+        *simulation_state = Running;
+    }
+}
+
 fn update_field(test_charges: &mut Vec<TestCharge>, charges: &Vec<PointCharge>) {
     for test_charge in &mut *test_charges {
         test_charge.clear_forces();
@@ -153,7 +199,6 @@ fn update_field(test_charges: &mut Vec<TestCharge>, charges: &Vec<PointCharge>) 
     for test_charge in &mut *test_charges {
         for charge in charges {
             test_charge.force_with(charge);
-            // test_charge.potential_with(charge);
         }
     }
 

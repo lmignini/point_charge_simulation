@@ -72,7 +72,7 @@ pub struct PointCharge {
     pub drawing_circle: ChargeCircle,
     pub sign: Sign,
     pub is_fixed: bool,
-    is_selected: bool,
+    pub is_selected: bool,
     pub is_colliding: bool,
 
     pub m: f32,
